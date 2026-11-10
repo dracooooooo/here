@@ -316,6 +316,25 @@ pub(in crate::isa::riscv) fn get_exec_func(
         // RV_Custom
         //---------------------------------------
         #[cfg(feature = "custom-instr")]
+        RiscvInstr::CUSTOM_ABS => |info, cpu| {
+            let RVInstrInfo::R { rd, rs1, rs2 } = info else {
+                return Err(Exception::IllegalInstruction);
+            };
+            if rs2 != 0 {
+                return Err(Exception::IllegalInstruction);
+            }
+            // Chapter 2 only recognizes the instruction; rd is unchanged.
+            log::info!(
+                "[Custom-Instr] CUSTOM_ABS recognized: rd={}, rs1={}, rs2={}",
+                rd,
+                rs1,
+                rs2
+            );
+            cpu.pc = cpu.pc.wrapping_add(4);
+            cpu.csr.get_by_type_existing::<Minstret>().wrapping_add(1);
+            Ok(())
+        },
+        #[cfg(feature = "custom-instr")]
         RiscvInstr::MY_INSTR0_R => todo!(),
         #[cfg(feature = "custom-instr")]
         RiscvInstr::MY_INSTR1_DISPLAY => |info, cpu| {

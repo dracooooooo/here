@@ -931,3 +931,91 @@ fn test_vector_config() {
         },
     );
 }
+
+#[cfg(feature = "custom-instr")]
+#[test]
+fn test_custom_abs_decode_and_placeholder() {
+    for (rd, rs1) in [(3u8, 1u8), (31, 17), (0, 31), (7, 0), (9, 9)] {
+        let raw = 0x0200_000b | (u32::from(rs1) << 15) | (u32::from(rd) << 7);
+        let cpu = TestCPUBuilder::new().build();
+        let decoded = cpu.decoder.decode(raw.into()).unwrap();
+        assert_eq!(decoded.instr, RiscvInstr::CUSTOM_ABS);
+        assert!(
+            matches!(decoded.info, RVInstrInfo::R { rd: d, rs1: s, rs2: 0 }
+            if d == rd && s == rs1)
+        );
+        assert_eq!(decoded.len, 4);
+
+        run_test_exec_decode(
+            raw,
+            |builder| {
+                builder
+                    .reg(rs1, 0xffff_ffff_ffff_fff9)
+                    .reg(rd, 0x1234)
+                    .pc(0x1000)
+                    .csr(Minstret::get_index(), 7)
+            },
+            |checker| {
+                checker
+                    .reg(rd, if rd == 0 { 0 } else { 0x1234 })
+                    .pc(0x1004)
+                    .csr(Minstret::get_index(), 8)
+            },
+        );
+    }
+}
+
+#[cfg(feature = "custom-instr")]
+#[test]
+fn test_custom_abs_nonzero_rs2_rejected() {
+    for rs2 in [1u32, 31] {
+        let raw = 0x0200_000b | (rs2 << 20) | (1 << 15) | (3 << 7);
+        let mut cpu = TestCPUBuilder::new()
+            .reg(3, 0x1234)
+            .pc(0x1000)
+            .csr(Minstret::get_index(), 7)
+            .build();
+        let decoded = cpu.decoder.decode(raw.into()).unwrap();
+        assert_eq!(decoded.instr, RiscvInstr::CUSTOM_ABS);
+        assert!(
+            matches!(decoded.info, RVInstrInfo::R { rd: 3, rs1: 1, rs2: s }
+            if u32::from(s) == rs2)
+        );
+        assert!(matches!(
+            cpu.execute(decoded.instr, decoded.info),
+            Err(Exception::IllegalInstruction)
+        ));
+        CPUChecker::new(&mut cpu)
+            .reg(3, 0x1234)
+            .pc(0x1000)
+            .csr(Minstret::get_index(), 7);
+    }
+}
+
+#[cfg(feature = "custom-instr")]
+#[test]
+fn test_custom_abs_illegal_step_trap() {
+    use crate::isa::riscv::csr_reg::csr_macro::Mtval;
+
+    let raw = 0x0210_818b_u32;
+    let handler = ram_config::BASE_ADDR + 0x100;
+    run_test_cpu_step(
+        &[raw],
+        |builder| {
+            builder
+                .pc(ram_config::BASE_ADDR)
+                .reg(3, 0x1234)
+                .csr(Mtvec::get_index(), handler)
+                .csr(Minstret::get_index(), 7)
+        },
+        |checker| {
+            checker
+                .reg(3, 0x1234)
+                .pc(handler)
+                .csr(Mepc::get_index(), ram_config::BASE_ADDR)
+                .csr(Mcause::get_index(), Exception::IllegalInstruction.into())
+                .csr(Mtval::get_index(), raw as WordType)
+                .csr(Minstret::get_index(), 7)
+        },
+    );
+}

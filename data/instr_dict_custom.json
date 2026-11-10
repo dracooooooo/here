@@ -1,4 +1,11 @@
 {
+    "custom_abs": {
+        "encoding": "0000001----------000-----0001011",
+        "variable_fields": ["rd", "rs1", "rs2"],
+        "extension": ["rv_custom0"],
+        "match": "0x0200000b",
+        "mask": "0xfe00707f"
+    },
     "my_instr0_r": {
         "encoding": "0000000----------000-----0001011",
         "variable_fields": [
